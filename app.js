@@ -33,12 +33,15 @@ const apiKey = 'yourApiKey';
       /* check if trust score node has the user public key. Without having trust score, you can receive Coti from other addresses.
          But when you need to spend your coti from your address, trustscore should be previously set for address owner
       */
-      const trustScore = await nodeUtils.getUserTrustScore(userHash, network);
-      console.log(trustScore);
+      const trustScoreResponse = await nodeUtils.getUserTrustScore(userHash, network);
+      console.log(`Trust score taken from TS node:`);
+      console.log(trustScoreResponse);
     } catch (e) {
       if (e.message === 'User does not exist!') {
         // seeting trust score. Only one time action.
-        await nodeUtils.setTrustScore(apiKey, userHash, network);
+        const trustScoreResponse = await nodeUtils.setTrustScore(apiKey, userHash, network);
+        console.log(`Trust score inserted:`);
+        console.log(trustScoreResponse);
       }
     }
 
