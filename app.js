@@ -82,6 +82,11 @@ const apiKey = 'yourApiKey';
     const transactionHistory = await nodeClient.getTransactionsHistory([address]);
     console.log(`Transaction history:`);
     console.log(transactionHistory);
+
+    // check balances of address array
+    const addressBalances = await nodeClient.checkBalances([address]);
+    console.log(`Address balances:`);
+    console.log(addressBalances);
   } catch (e) {
     console.log(e);
   }
