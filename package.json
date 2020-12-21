@@ -17,6 +17,6 @@
   },
   "homepage": "https://github.com/cotitech-io/coti-sdk-app#readme",
   "dependencies": {
-    "@coti-io/crypto": "^1.0.0"
+    "@coti-io/crypto": "^1.0.1"
   }
 }
