@@ -62,24 +62,24 @@ const apiKey = 'yourApiKey';
     //listen for new transaction or transaction status changes
     baseWallet.onReceivedTransaction((receivedTransaction) => console.log('Received transaction', receivedTransaction));
 
-    /* initiate BaseAddress instance to load to BaseWallet instance. 
-       By default the preBalance and balance are initiated by 0. If 
-       you store the address with its balances at your DB (which is 
+    /* initiate BaseAddress instance to load to BaseWallet instance.
+       By default the preBalance and balance are initiated by 0. If
+       you store the address with its balances at your DB (which is
        strongly recommended), then you can set those balances with:
           baseAddress.setBalance(balance);
           baseAddress.setPreBalance(preBalance);
-       where balance and preBalance are the values from DB. Then at 
-       checkBalancesOfAddresses method call, onBalanceChange will be 
-       triggered only for addresses whose balances are changed. Otherwise 
-       every time checkBalancesOfAddresses method is called, you will 
-       get all the address balances at onBalanceChange. 
+       where balance and preBalance are the values from DB. Then at
+       checkBalancesOfAddresses method call, onBalanceChange will be
+       triggered only for addresses whose balances are changed. Otherwise
+       every time checkBalancesOfAddresses method is called, you will
+       get all the address balances at onBalanceChange.
     */
     const baseAddress = new BaseAddress(address);
     // loading the addresses to baseWallet
     baseWallet.loadAddresses([baseAddress]);
 
     // Initiate here a transaction from DB that is related with address. This transaction is stored to DB by your app previously.
-    const transactionFromDb;
+    let transactionFromDb;
     // createTime and transactionConsensusUpdateTime are timestamp in seconds with milliseconds in decimal points
     const { hash, createTime, transactionConsensusUpdateTime } = transactionFromDb;
     // transaction to load to baseWallet

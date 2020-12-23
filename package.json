@@ -18,5 +18,8 @@
   "homepage": "https://github.com/cotitech-io/coti-sdk-app#readme",
   "dependencies": {
     "@coti-io/crypto": "^1.1.0"
+  },
+  "devDependencies": {
+    "eslint": "^7.16.0"
   }
 }
