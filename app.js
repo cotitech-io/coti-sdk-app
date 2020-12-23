@@ -95,9 +95,9 @@ const apiKey = 'yourApiKey';
     // initiate your websocket instance
     const webSocket = new WebSocket(baseWallet);
     // success callback for WebSocket connection
-    const successCallback = () => console.log('Connection success');
+    const successCallback = async () => console.log('Connection success');
     // reconnect fail callback for WebSocket connection
-    const reconnectFailedCallback = () => console.log('Error to websocket connection');
+    const reconnectFailedCallback = async () => console.log('Error to websocket connection');
     // websocket connection
     await webSocket.connect(successCallback, reconnectFailedCallback);
 
