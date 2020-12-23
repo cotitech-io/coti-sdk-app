@@ -1,4 +1,14 @@
-const { cryptoUtils, transactionUtils, EcKeyPair, nodeUtils, NodeClient } = require('@coti-io/crypto');
+const {
+  cryptoUtils,
+  transactionUtils,
+  EcKeyPair,
+  nodeUtils,
+  NodeClient,
+  BaseAddress,
+  BaseWallet,
+  WebSocket,
+  ReducedTransaction,
+} = require('@coti-io/crypto');
 
 // chose coti network , mainnet or testnet
 const network = 'testnet';
@@ -44,6 +54,64 @@ const apiKey = 'yourApiKey';
         console.log(trustScoreResponse);
       }
     }
+
+    // BASEWALLET and WEBSOCKET use
+    const baseWallet = new BaseWallet(network);
+    // listen for balance changes
+    baseWallet.onBalanceChange((balanceChangedAddress) => console.log('Balance change: ', balanceChangedAddress));
+    //listen for new transaction or transaction status changes
+    baseWallet.onReceivedTransaction((receivedTransaction) => console.log('Received transaction', receivedTransaction));
+
+    /* initiate BaseAddress instance to load to BaseWallet instance. 
+       By default the preBalance and balance are initiated by 0. If 
+       you store the address with its balances at your DB (which is 
+       strongly recommended), then you can set those balances with:
+          baseAddress.setBalance(balance);
+          baseAddress.setPreBalance(preBalance);
+       where balance and preBalance are the values from DB. Then at 
+       checkBalancesOfAddresses method call, onBalanceChange will be 
+       triggered only for addresses whose balances are changed. Otherwise 
+       every time checkBalancesOfAddresses method is called, you will 
+       get all the address balances at onBalanceChange. 
+    */
+    const baseAddress = new BaseAddress(address);
+    // loading the addresses to baseWallet
+    baseWallet.loadAddresses([baseAddress]);
+
+    // Initiate here a transaction from DB that is related with address. This transaction is stored to DB by your app previously.
+    const transactionFromDb;
+    // createTime and transactionConsensusUpdateTime are timestamp in seconds with milliseconds in decimal points
+    const { hash, createTime, transactionConsensusUpdateTime } = transactionFromDb;
+    // transaction to load to baseWallet
+    const reducedTransaction = new ReducedTransaction(hash, createTime, transactionConsensusUpdateTime);
+    // load the initially know transactions related with your loaded addresses
+    baseWallet.loadTransactions([reducedTransaction]);
+
+    // sync the balances of all loaded addresses from network
+    await baseWallet.checkBalancesOfAddresses();
+    // sync all loaded transactions related with loaded addresses from network
+    await baseWallet.checkTransactionHistory();
+
+    // initiate your websocket instance
+    const webSocket = new WebSocket(baseWallet);
+    // success callback for WebSocket connection
+    const successCallback = () => console.log('Connection success');
+    // reconnect fail callback for WebSocket connection
+    const reconnectFailedCallback = () => console.log('Error to websocket connection');
+    // websocket connection
+    await webSocket.connect(successCallback, reconnectFailedCallback);
+
+    // when you generate another address and you want to monitor it, you should do:
+    const newAddressIndex = 1;
+    const newAddressKeyPair = new EcKeyPair(seed, newAddressIndex);
+    // new address in hex
+    const newAddress = newAddressKeyPair.toAddress();
+    const newBaseAddress = new BaseAddress(newAddress);
+    // load the new baseAddress to baseWallet
+    await baseWallet.setAddress(newBaseAddress);
+    // websocket subscription to the new address. Pay attention that newAddress is hexadecimal string
+    webSocket.connectToAddress(newAddress);
+    // END OF BASEWALLET and WEBSOCKET use
 
     // create input map to spend Coti from address
     const amountSpend = 1;
