@@ -7,11 +7,14 @@ const {
   BaseAddress,
   BaseWallet,
   WebSocket,
-  ReducedTransaction,
+  ReducedTransaction, Wallet,
 } = require('@coti-io/crypto');
+const { HardForks } = require('@coti-io/crypto/dist/utils/transactionUtils');
+const { getCurrencyHashBySymbol } = require('@coti-io/crypto/dist/utils/utils');
 
 // chose coti network , mainnet or testnet
 const network = 'testnet';
+const fullnodeUrl = 'fullnodeurl'
 
 // api key that Coti provides, only to be used one time for each seed to insert the public key to the trust score node
 const apiKey = 'yourApiKey';
@@ -56,11 +59,13 @@ const apiKey = 'yourApiKey';
     }
 
     // BASEWALLET and WEBSOCKET use
-    const baseWallet = new BaseWallet(network);
+    const baseWallet = new Wallet({ seed, fullnode: fullnodeUrl, network });
     // listen for balance changes
     baseWallet.onBalanceChange((balanceChangedAddress) => console.log('Balance change: ', balanceChangedAddress));
     //listen for new transaction or transaction status changes
     baseWallet.onReceivedTransaction((receivedTransaction) => console.log('Received transaction', receivedTransaction));
+    //listen for new generated address
+    baseWallet.onGenerateAddress((addressHex) => console.log('Generated address', addressHex));
 
     /* initiate BaseAddress instance to load to BaseWallet instance.
        By default the preBalance and balance are initiated by 0. If
@@ -76,7 +81,7 @@ const apiKey = 'yourApiKey';
     */
     const baseAddress = new BaseAddress(address);
     // loading the addresses to baseWallet
-    baseWallet.loadAddresses([baseAddress]);
+    await baseWallet.loadAddresses([baseAddress]);
 
     // Initiate here a transaction from DB that is related with address. This transaction is stored to DB by your app previously.
     let transactionFromDb;
@@ -85,9 +90,9 @@ const apiKey = 'yourApiKey';
     // transaction to load to baseWallet
     const reducedTransaction = new ReducedTransaction(hash, createTime, transactionConsensusUpdateTime);
     // load the initially know transactions related with your loaded addresses
-    baseWallet.loadTransactions([reducedTransaction]);
+    await baseWallet.loadTransactions([reducedTransaction]);
 
-    // sync the balances of all loaded addresses from network
+    // sync the balances of native coti for all loaded addresses from network
     await baseWallet.checkBalancesOfAddresses();
     // sync all loaded transactions related with loaded addresses from network
     await baseWallet.checkTransactionHistory();
@@ -121,14 +126,38 @@ const apiKey = 'yourApiKey';
     // here insert a destination address in hex
     const destinationAddress = 'destinationAddressInHex';
 
-    // create locally the transaction
-    const transaction = await transactionUtils.createTransaction({
+    //checks if fullnode had multi currency hardfork
+    const hardFork = await nodeUtils.isNodeSupportMultiCurrencyApis(network, fullnodeUrl);
+
+    const transactionProperties = {
       userPrivateKey: userKeyPair.getPrivateKey(),
       inputMap,
       feeAddress: address, // fee address can be different from addresses in the input map. Then put the private key of feeAddress at the end of private keys to be used to sign
       destinationAddress,
       network,
-    });
+    };
+
+    if(hardFork === HardForks.MULTI_CURRENCY){
+      // get the balances of none native tokens for given addresses array.
+      await nodeUtils.getTokenBalances([address]);
+      // get balances of all wallet addresses from network none native token balances
+      await nodeUtils.getUserTokenCurrencies(userHash, baseWallet, fullnodeUrl, network);
+      //multi currency additional properties
+      //we will use as an example transfer of native currency
+      const cotiCurrencyHash = getCurrencyHashBySymbol('coti');
+      //token hash that we want to transfer
+      transactionProperties.currencyHash = cotiCurrencyHash;
+      transactionProperties.hardFork = hardFork;
+      //currency to pay fees with
+      transactionProperties.originalCurrencyHash = cotiCurrencyHash;
+    }
+
+    // create locally the transaction
+    // changes in fullnode that had hard fork of multi currency
+    // 1) IBT changes:
+    //    1.1) IBT will have new property named 'currencyHash' which describe the token that being transferred.
+    //    1.2) there must be at least one IBT with native currencyHash to pay the fees.
+    const transaction = await transactionUtils.createTransaction(transactionProperties);
 
     // sign locally the transaction
     transaction.signWithPrivateKeys(
@@ -145,6 +174,10 @@ const apiKey = 'yourApiKey';
     const transactionHash = transaction.getHash();
 
     // to monitor the transaction status, use the following method. Statuses are pending and confirmed
+    // changes in fullnode that had hard fork of multi currency
+    // 1) RBT new properties:
+    //    1.1) named 'currencyHash' which says what token received(in case its native the currencyHash value will be 'ae2b227ab7e614b8734be1f03d1532e66bf6caf76accc02ca4da6e28').
+    //    1.2) named 'originalCurrencyHash' string currencyHash which says what token used to pay fees.(currently fullnode accepts only native)
     const transactionFromNode = await nodeClient.getTransaction(transactionHash);
     console.log(`Transaction from node:`);
     console.log(transactionFromNode);
