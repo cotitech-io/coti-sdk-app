@@ -4,17 +4,16 @@ const {
   EcKeyPair,
   nodeUtils,
   NodeClient,
-  BaseAddress,
-  BaseWallet,
   WebSocket,
-  ReducedTransaction, Wallet,
+  ReducedTransaction,
+  Wallet,
+  utils,
 } = require('@coti-io/crypto');
-const { HardForks } = require('@coti-io/crypto/dist/utils/transactionUtils');
-const { getCurrencyHashBySymbol } = require('@coti-io/crypto/dist/utils/utils');
 
 // chose coti network , mainnet or testnet
-const network = 'testnet';
-const fullnodeUrl = 'fullnodeurl'
+const network = 'mainnet';
+const fullNodeUrl = 'full node url';
+const trustScoreNodeUrl = 'trust score url'
 
 // api key that Coti provides, only to be used one time for each seed to insert the public key to the trust score node
 const apiKey = 'yourApiKey';
@@ -25,9 +24,13 @@ const apiKey = 'yourApiKey';
     const mnemonic = cryptoUtils.generateMnemonic();
     console.log(`Mnemonic: ${mnemonic}`);
 
-    // generate seed from mnemonic
-    const seed = await cryptoUtils.generateSeedFromMnemonic(mnemonic);
-    console.log(`Seed: ${seed}`);
+    // generate seed in 64 bytes from mnemonic
+    const seedIn64Bytes = await cryptoUtils.generateSeedFromMnemonic(mnemonic);
+    console.log(`seedIn64Bytes: ${seedIn64Bytes}`);
+
+    // generate seed in 32bytes
+    const seed = cryptoUtils.generateSeed(seedIn64Bytes);
+    console.log(`seedIn32Bytes: ${seed}`)
 
     // ec to be used to sign all messages
     const userKeyPair = new EcKeyPair(seed);
@@ -36,10 +39,9 @@ const apiKey = 'yourApiKey';
     console.log(`User public key: ${userHash}`);
 
     const addressIndex = 0;
-    // ec to be used to sign for transactions sent from address of index addressIndex.
+    // // ec to be used to sign for transactions sent from address of index addressIndex.
     const addressKeyPair = new EcKeyPair(seed, addressIndex);
-    // address in hexadecimal of index addressIndex
-    const address = addressKeyPair.toAddress();
+    // // address in hexadecimal of index addressIndex
     const addressPrivateKey = addressKeyPair.getPrivateKey();
 
     try {
@@ -59,7 +61,7 @@ const apiKey = 'yourApiKey';
     }
 
     // BASEWALLET and WEBSOCKET use
-    const baseWallet = new Wallet({ seed, fullnode: fullnodeUrl, network });
+    const baseWallet = new Wallet({ seed, fullnode: fullNodeUrl, network, trustScoreNode: trustScoreNodeUrl });
     // listen for balance changes
     baseWallet.onBalanceChange((balanceChangedAddress) => console.log('Balance change: ', balanceChangedAddress));
     //listen for new transaction or transaction status changes
@@ -68,20 +70,21 @@ const apiKey = 'yourApiKey';
     baseWallet.onGenerateAddress((addressHex) => console.log('Generated address', addressHex));
 
     /* initiate BaseAddress instance to load to BaseWallet instance.
-       By default the preBalance and balance are initiated by 0. If
+       By default, the preBalance and balance are initiated by 0. If
        you store the address with its balances at your DB (which is
        strongly recommended), then you can set those balances with:
           baseAddress.setBalance(balance);
           baseAddress.setPreBalance(preBalance);
        where balance and preBalance are the values from DB. Then at
        checkBalancesOfAddresses method call, onBalanceChange will be
-       triggered only for addresses whose balances are changed. Otherwise
+       triggered only for addresses whose balances are changed. Otherwise,
        every time checkBalancesOfAddresses method is called, you will
        get all the address balances at onBalanceChange.
     */
-    const baseAddress = new BaseAddress(address);
+    // const baseAddress = new BaseAddress(address);
+    const address = await baseWallet.generateAddressByIndex(addressIndex);
     // loading the addresses to baseWallet
-    await baseWallet.loadAddresses([baseAddress]);
+    await baseWallet.loadAddresses([address]);
 
     // Initiate here a transaction from DB that is related with address. This transaction is stored to DB by your app previously.
     let transactionFromDb;
@@ -89,7 +92,7 @@ const apiKey = 'yourApiKey';
     const { hash, createTime, transactionConsensusUpdateTime } = transactionFromDb;
     // transaction to load to baseWallet
     const reducedTransaction = new ReducedTransaction(hash, createTime, transactionConsensusUpdateTime);
-    // load the initially know transactions related with your loaded addresses
+    // load the initial known transactions related with your loaded addresses
     await baseWallet.loadTransactions([reducedTransaction]);
 
     // sync the balances of native coti for all loaded addresses from network
@@ -106,45 +109,45 @@ const apiKey = 'yourApiKey';
     // websocket connection
     await webSocket.connect(successCallback, reconnectFailedCallback);
 
-    // when you generate another address and you want to monitor it, you should do:
+    // when you generate another address, and you want to monitor it, you should do:
     const newAddressIndex = 1;
-    const newAddressKeyPair = new EcKeyPair(seed, newAddressIndex);
-    // new address in hex
-    const newAddress = newAddressKeyPair.toAddress();
-    const newBaseAddress = new BaseAddress(newAddress);
+    // new address
+    const newAddress = await baseWallet.generateAddressByIndex(newAddressIndex)
     // load the new baseAddress to baseWallet
-    await baseWallet.setAddress(newBaseAddress);
+    await baseWallet.setAddress(newAddress);
     // websocket subscription to the new address. Pay attention that newAddress is hexadecimal string
-    webSocket.connectToAddress(newAddress);
+    webSocket.connectToAddress(newAddress.getAddressHex());
     // END OF BASEWALLET and WEBSOCKET use
 
     // create input map to spend Coti from address
     const amountSpend = 1;
     const inputMap = new Map();
-    inputMap.set(address, amountSpend);
+    inputMap.set(address.getAddressHex(), amountSpend);
 
     // here insert a destination address in hex
     const destinationAddress = 'destinationAddressInHex';
 
     //checks if fullnode had multi currency hardfork
-    const hardFork = await nodeUtils.isNodeSupportMultiCurrencyApis(network, fullnodeUrl);
+    const hardFork = await nodeUtils.isNodeSupportMultiCurrencyApis('mainnet', baseWallet.getFullNode());
 
     const transactionProperties = {
       userPrivateKey: userKeyPair.getPrivateKey(),
       inputMap,
-      feeAddress: address, // fee address can be different from addresses in the input map. Then put the private key of feeAddress at the end of private keys to be used to sign
+      feeAddress: address.getAddressHex(), // fee address can be different from addresses in the input map. Then put the private key of feeAddress at the end of private keys to be used to sign
       destinationAddress,
+      wallet: baseWallet,
       network,
     };
 
-    if(hardFork === HardForks.MULTI_CURRENCY){
+    if(hardFork === transactionUtils.HardForks.MULTI_CURRENCY){
       // get the balances of none native tokens for given addresses array.
-      await nodeUtils.getTokenBalances([address]);
+      await nodeUtils.getTokenBalances([address.getAddressHex()]);
       // get balances of all wallet addresses from network none native token balances
-      await nodeUtils.getUserTokenCurrencies(userHash, baseWallet, fullnodeUrl, network);
+      await nodeUtils.getUserTokenCurrencies(userHash, baseWallet, baseWallet.getFullNode());
       //multi currency additional properties
       //we will use as an example transfer of native currency
-      const cotiCurrencyHash = getCurrencyHashBySymbol('coti');
+      const cotiCurrencyHash = utils.getCurrencyHashBySymbol('coti');
+      console.log(`coti currencyHash: ${cotiCurrencyHash}`);
       //token hash that we want to transfer
       transactionProperties.currencyHash = cotiCurrencyHash;
       transactionProperties.hardFork = hardFork;
@@ -183,12 +186,12 @@ const apiKey = 'yourApiKey';
     console.log(transactionFromNode);
 
     // get transaction history by address array
-    const transactionHistory = await nodeClient.getTransactionsHistory([address]);
+    const transactionHistory = await nodeClient.getTransactionsHistory([address.getAddressHex()]);
     console.log(`Transaction history:`);
     console.log(transactionHistory);
 
     // check balances of address array
-    const addressBalances = await nodeClient.checkBalances([address]);
+    const addressBalances = await nodeClient.checkBalances([address.getAddressHex()]);
     console.log(`Address balances:`);
     console.log(addressBalances);
   } catch (e) {
